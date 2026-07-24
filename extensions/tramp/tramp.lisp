@@ -123,13 +123,7 @@ values are cons of (timestamp . result).")
 
 (defun sshpass-available-p ()
   "Check if the sshpass utility is available on the system."
-  (or (eql 0 (nth-value 2
-                        (uiop:run-program '("which" "sshpass")
-                                          :output nil
-                                          :error-output nil
-                                          :ignore-error-status t)))
-      (probe-file "/usr/bin/sshpass")
-      (probe-file "/usr/local/bin/sshpass")))
+  (exist-program-p "sshpass"))
 
 (defun ssh-ensure-auth (method user host)
   "Get cached auth state for SSH connection.
