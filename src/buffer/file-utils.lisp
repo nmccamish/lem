@@ -57,11 +57,11 @@
 
 (defun expand-file-name (filename &optional (directory (uiop:getcwd)))
   (when (pathnamep filename) (setf filename (namestring filename)))
-  (or (loop :for f :in *virtual-expand-file-name-functions*
-            :for result := (funcall f filename directory)
-            :when result :do (return result))
+  (%call-virtual-handlers *virtual-expand-file-name-functions*
+      (list filename directory)
+    (lambda ()
       (let ((pathname (parse-filename filename (pathname-directory directory))))
-        (namestring (merge-pathnames pathname directory)))))
+        (namestring (merge-pathnames pathname directory))))))
 
 (defun tail-of-pathname (pathname)
   (let ((pathname (uiop:ensure-absolute-pathname pathname #p"/")))
@@ -82,12 +82,12 @@
             x2)))))
 
 (defun virtual-probe-file (pathspec &optional (base-dir pathspec))
-  (or (loop :for f :in *virtual-probe-file-functions*
-            :for result := (funcall f pathspec base-dir)
-            :when result :do (return result))
+  (%call-virtual-handlers *virtual-probe-file-functions*
+      (list pathspec base-dir)
+    (lambda ()
       (cond
         ((ppcre:scan "^~/.*" (namestring base-dir)) (probe-file% pathspec))
-        (t (probe-file pathspec)))))
+        (t (probe-file pathspec))))))
 
 (defun sort-files (pathnames &key (key #'namestring) (test #'string<))
   "Sort a list of pathnames."
@@ -105,14 +105,14 @@
      (sort-files files))))
 
 (defun directory-files (pathspec)
-  (or (loop :for f :in *virtual-directory-files-functions*
-            :for result := (funcall f pathspec)
-            :when result :do (return result))
+  (%call-virtual-handlers *virtual-directory-files-functions*
+      (list pathspec)
+    (lambda ()
       (if (uiop:directory-pathname-p pathspec)
           (list (pathname pathspec))
           (or (mapcar (lambda (x) (virtual-probe-file x pathspec))
                       (directory pathspec))
-              (list pathspec)))))
+              (list pathspec))))))
 
 (defun list-directory (directory &key directory-only (sort-method :pathname))
   (delete nil
@@ -139,13 +139,11 @@
 
 (defun file-mtime (pathname)
   "Return the file's last data modification time."
-  (or (loop :for f :in *virtual-file-metadata-functions*
-            :for result := (funcall f pathname :mtime)
-            :when result :do (return result))
-      #+sbcl
-      (sb-posix:stat-mtime (sb-posix:stat pathname))
-      #-sbcl
-      (error "file-utils: file-mtime is not implemented for your implementation.")))
+  (%call-virtual-handlers *virtual-file-metadata-functions*
+      (list pathname :mtime)
+    (lambda ()
+      #+sbcl (sb-posix:stat-mtime (sb-posix:stat pathname))
+      #-sbcl (error "file-utils: file-mtime is not implemented for your implementation."))))
 
 (defun copy-file-or-directory (from to)
   (let ((base-dir from))
@@ -213,12 +211,19 @@ and should return the value, or nil to pass to the next handler.")
 Each function receives (directory) and should return the directory if it exists,
 or nil to pass to the next handler.")
 
+(defun %call-virtual-handlers (handlers args fallback-fn)
+  "Try each function in HANDLERS with ARGS. Return the first non-nil result.
+If no handler matches, call FALLBACK-FN."
+  (or (loop :for f :in handlers
+            :for result := (apply f args)
+            :when result :do (return result))
+      (funcall fallback-fn)))
+
 (defun virtual-directory-exists-p (directory)
   "Check if a directory exists, using virtual filesystem hooks if applicable."
-  (or (loop :for f :in *virtual-directory-exists-p-functions*
-            :for result := (funcall f directory)
-            :when result :do (return result))
-      (uiop:directory-exists-p directory)))
+  (%call-virtual-handlers *virtual-directory-exists-p-functions*
+      (list directory)
+    (lambda () (uiop:directory-exists-p directory))))
 
 (defun open-virtual-file (filename &key external-format direction element-type)
   (apply #'values
