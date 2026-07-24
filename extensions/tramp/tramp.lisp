@@ -125,6 +125,28 @@ values are cons of (timestamp . result).")
   "Check if the sshpass utility is available on the system."
   (exist-program-p "sshpass"))
 
+(defun ssh-conn-key (user host)
+  "Make a cache key string for SSH auth state."
+  (format nil "~A@~A" (or user "") host))
+
+(defun ssh-auth-method (user host)
+  "Return the known SSH auth method for USER@HOST: :key, :password, or nil."
+  (gethash (ssh-conn-key user host) *ssh-auth-method-cache*))
+
+(defun (setf ssh-auth-method) (value user host)
+  "Set the known SSH auth method for USER@HOST."
+  (setf (gethash (ssh-conn-key user host) *ssh-auth-method-cache*) value))
+
+(defun ssh-prompt-or-error (user host)
+  "Prompt for SSH password; signal editor-error if sshpass is unavailable.
+Returns (values password t)."
+  (if (sshpass-available-p)
+      (let ((pwd (prompt-password :ssh user host)))
+        (values pwd t))
+      (editor-error
+       "SSH key auth failed for ~A@~A. Install sshpass for password auth."
+       (or user "") host)))
+
 (defun ssh-ensure-auth (method user host)
   "Get cached auth state for SSH connection.
 Returns (values password auth-tried-p):
@@ -132,37 +154,24 @@ Returns (values password auth-tried-p):
   - key auth known to work → (values nil t)
   - unknown → (values nil nil) — caller should try BatchMode first"
   (declare (ignore method))
-  (let ((conn-key (format nil "~A@~A" (or user "") host)))
-    (or (let ((pwd (get-password :ssh user host)))
-          (when pwd (return-from ssh-ensure-auth (values pwd t))))
-        (let ((auth-method (gethash conn-key *ssh-auth-method-cache*)))
-          (ecase auth-method
-            ((nil) (values nil nil))         ;; unknown — try key first
-            (:key (values nil t))             ;; key works, no password needed
-            (:password                        ;; need password
-             (if (sshpass-available-p)
-                 (let ((pwd (prompt-password :ssh user host)))
-                   (values pwd t))
-                 (editor-error
-                  "SSH key auth failed for ~A@~A. Install sshpass for password auth."
-                  (or user "") host))))))))
+  (let ((pwd (get-password :ssh user host)))
+    (when pwd
+      (return-from ssh-ensure-auth (values pwd t))))
+  (ecase (ssh-auth-method user host)
+    ((nil) (values nil nil))
+    (:key (values nil t))
+    (:password (ssh-prompt-or-error user host))))
 
 (defun ssh-remember-auth-failure (user host)
   "Called when a BatchMode SSH command fails (exit 255).
 Marks connection as needing password and prompts."
-  (let ((conn-key (format nil "~A@~A" (or user "") host)))
-    (setf (gethash conn-key *ssh-auth-method-cache*) :password)
-    (clear-password :ssh user host)
-    (if (sshpass-available-p)
-        (prompt-password :ssh user host)
-        (editor-error
-         "SSH key auth failed for ~A@~A. Install sshpass for password auth."
-         (or user "") host))))
+  (setf (ssh-auth-method user host) :password)
+  (clear-password :ssh user host)
+  (ssh-prompt-or-error user host))
 
 (defun ssh-remember-auth-success (user host)
   "Called when a BatchMode SSH command succeeds. Marks key auth as working."
-  (let ((conn-key (format nil "~A@~A" (or user "") host)))
-    (setf (gethash conn-key *ssh-auth-method-cache*) :key)))
+  (setf (ssh-auth-method user host) :key))
 
 (defun ensure-password (method user host)
   "Get cached password or prompt the user. For :ssh returns nil
