@@ -660,30 +660,35 @@ directory-files directly for the TRAMP directory listing."
   (let* ((expanded (expand-file-name string directory))
          (input-dir (directory-namestring expanded)))
     (if (path-p input-dir)
-        (let* ((files (directory-files input-dir))
-               ;; Partial filename the user is typing (after the last "/")
-               (partial (enough-namestring expanded input-dir)))
-          (when files
-            (let ((filtered
-                    (if (and partial (not (string= partial "")))
-                        (remove-if-not
-                         (lambda (f)
-                           (let ((name (enough-namestring (namestring f) input-dir)))
-                             (and name
-                                  (> (length name) 0)
-                                  (eql 0 (search (string-downcase partial)
-                                                 (string-downcase name))))))
-                         files)
-                        files)))
-              (unless filtered
-                (return-from file-completion nil))
-              (mapcar (lambda (f)
-                        (let ((label (enough-namestring (namestring f) input-dir)))
-                          (lem/completion-mode:make-completion-item
-                           :label (or label (namestring f)))))
-                      filtered))))
+        (virtual-path-completions expanded input-dir)
         (funcall *original-completion-function*
                  string directory :directory-only directory-only))))
+
+(defun virtual-path-completions (expanded input-dir)
+  "Return completion items for a virtual-path directory listing.
+EXPANDED is the full user input path, INPUT-DIR is its directory part."
+  (let* ((files (directory-files input-dir))
+         (partial (enough-namestring expanded input-dir)))
+    (when files
+      (mapcar (lambda (f)
+                (let ((label (enough-namestring (namestring f) input-dir)))
+                  (lem/completion-mode:make-completion-item
+                   :label (or label (namestring f)))))
+              (filter-by-filename-prefix files input-dir partial)))))
+
+(defun filter-by-filename-prefix (files input-dir partial)
+  "Filter FILES to those whose basename starts with PARTIAL (case-insensitive).
+If PARTIAL is nil or empty, return FILES unchanged."
+  (if (and partial (string/= partial ""))
+      (remove-if-not
+       (lambda (f)
+         (let ((name (enough-namestring (namestring f) input-dir)))
+           (and name
+                (> (length name) 0)
+                (eql 0 (search (string-downcase partial)
+                               (string-downcase name))))))
+       files)
+      files))
 
 ;;; ------------------------------------------------------------------
 ;;; External Format Detection Override
