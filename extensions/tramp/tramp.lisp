@@ -658,22 +658,54 @@ Bypasses list-directory (no virtual hooks) by calling
 directory-files directly for the TRAMP directory listing."
   (declare (ignore directory-only))
   (let* ((expanded (expand-file-name string directory))
-         (input-dir (directory-namestring expanded)))
-    (if (path-p input-dir)
+         (input-dir (virtual-directory-namestring expanded)))
+    (if (path-p expanded)
         (virtual-path-completions expanded input-dir)
         (funcall *original-completion-function*
                  string directory :directory-only directory-only))))
 
+(defun virtual-directory-namestring (path)
+  "Return the directory part of a TRAMP path for completion purposes.
+Uses string-based extraction because directory-namestring doesn't parse
+TRAMP paths (like /ssh:host:) correctly on SBCL — the initial /method:
+segment can be misinterpreted as a host component."
+  (if (path-p path)
+      ;; String-based extraction: everything up to and including the last /
+      (let ((pos (position #\/ path :from-end t)))
+        (if (and pos (> pos 0))
+            ;; Normal case: /ssh:host:/home/user/pa → /ssh:host:/home/user/
+            (subseq path 0 (1+ pos))
+            ;; Bare /ssh:host: (no remote path yet) — ensure trailing /
+            (if (char= (char path (1- (length path))) #\/)
+                path
+                (concatenate 'string path "/"))))
+      (directory-namestring path)))
+
 (defun virtual-path-completions (expanded input-dir)
   "Return completion items for a virtual-path directory listing.
-EXPANDED is the full user input path, INPUT-DIR is its directory part."
+EXPANDED is the full user input path, INPUT-DIR is its directory part.
+Sets :start and :end on completion items so that only the filename
+component (after the last /) is replaced. Without this, the prompt buffer's
+syntax table (which treats /, :, @ as symbol chars) causes
+`skip-chars-backward' to consume the entire TRAMP path."
   (let* ((files (directory-files input-dir))
          (partial (enough-namestring expanded input-dir)))
     (when files
       (mapcar (lambda (f)
                 (let ((label (enough-namestring (namestring f) input-dir)))
-                  (lem/completion-mode:make-completion-item
-                   :label (or label (namestring f)))))
+                  (with-point ((s (lem/prompt-window::current-prompt-start-point))
+                               (e (lem/prompt-window::current-prompt-start-point)))
+                    ;; Move to cursor position, then find the filename start
+                    ;; (character after last /), same as prompt-file-completion.
+                    (line-end s)
+                    (unless (search-backward s "/")
+                      (line-start s))
+                    (character-offset s 1)
+                    (line-end e)
+                    (lem/completion-mode:make-completion-item
+                     :label (or label (namestring f))
+                     :start s
+                     :end e))))
               (filter-by-filename-prefix files input-dir partial)))))
 
 (defun filter-by-filename-prefix (files input-dir partial)
