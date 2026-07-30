@@ -6,10 +6,10 @@ into `C-x C-f` and edit the file as if it were local.
 
 ## Supported Methods
 
-| Method | Syntax | Description |
-|--------|--------|-------------|
-| `ssh`  | `/ssh:user@host:/remote/path` | Edit files on a remote host via SSH |
-| `sudo` |     `/sudo::/local/path`      | Edit local files with root privileges via sudo |
+| Method     | Syntax                            | Description                                              |
+|:----------:|-----------------------------------|----------------------------------------------------------|
+|   `ssh`    | `/ssh:user@host:/remote/path`     | Edit files on a remote host via SSH                      |
+|   `sudo`   | `/sudo::/local/path`              | Edit local files with root privileges via sudo           |
 
 ## Usage
 
@@ -65,6 +65,21 @@ No temporary files are created on either the local or remote side.
 
 - **sshpass** — only needed for SSH password authentication
 - **flexi-streams**, **str**, **babel**, **ppcre** — Common Lisp libraries
+
+## Terminal Integration
+
+When a buffer is visiting a TRAMP path, `M-x terminal` opens a terminal
+in the remote file's directory on the appropriate host:
+
+| Buffer path                          | Terminal command                                                               |
+|--------------------------------------|--------------------------------------------------------------------------------|
+| `/sudo::/etc/nginx/`                 | `sudo bash -c "cd /etc/nginx; exec bash"`                                      |
+| `/sudo:root::/var/log/`              | `sudo -u root bash -c "cd /var/log; exec bash"`                                |
+| `/ssh:user@host:/var/log/`           | `ssh -t user@host "cd /var/log; exec ${SHELL:-/bin/sh}"`                       |
+
+Authentication happens interactively inside the terminal PTY — sudo and
+ssh prompt for passwords naturally, without involving TRAMP's password
+management.  Key-based SSH auth works transparently.
 
 ## Performance
 
