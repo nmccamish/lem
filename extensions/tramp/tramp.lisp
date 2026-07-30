@@ -1,5 +1,10 @@
 (defpackage :lem-tramp
-  (:use :cl :lem))
+  (:use :cl :lem)
+  (:export :tramp-terminal-command
+           :path-p
+           :parse-path
+           :enable
+           :disable))
 (in-package :lem-tramp)
 
 (setf (documentation *package* t)
@@ -540,6 +545,43 @@ only file content flows through the pipe."
   "Escape ARG for safe use in a shell command (single-quote escaping)."
   (let ((escaped (ppcre:regex-replace-all "'" arg "'\\''")))
     (concatenate 'string "'" escaped "'")))
+
+;;; ------------------------------------------------------------------
+;;; Terminal Integration
+;;; ------------------------------------------------------------------
+
+(defun tramp-terminal-command (filename)
+  "Given a TRAMP FILENAME, return (values program argv) for launching a
+terminal in that file's remote directory.  Returns nil if FILENAME is
+not a TRAMP path.
+
+The caller should pass the returned values to terminal:create via
+:program and :argv keyword arguments."
+  (when (path-p filename)
+    (multiple-value-bind (method user host remote-path) (parse-path filename)
+      (let ((dir (escape-shell-arg (directory-namestring remote-path))))
+        (ecase method
+          (:sudo
+           (let* ((shell (or (uiop:getenv "SHELL") "/bin/bash"))
+                  (shell-cmd (format nil "cd ~A; exec ~A" dir shell))
+                  (argv `("sudo"
+                          ,@(when user (list "-u" user))
+                          ,shell
+                          "-c" ,shell-cmd)))
+             (values (first argv) argv)))
+          (:ssh
+           (let* ((target (if user (format nil "~A@~A" user host) host))
+                  ;; $SHELL is literal in the Lisp string — it passes
+                  ;; untouched through execvp→ssh→sshd and is expanded
+                  ;; by the remote shell.  ${SHELL:-/bin/sh} ensures
+                  ;; a working fallback on hosts where $SHELL is unset.
+                  (shell-cmd (format nil "cd ~A; exec ${SHELL:-/bin/sh}" dir))
+                  (argv `("ssh" "-t"
+                          "-o" "StrictHostKeyChecking=accept-new"
+                          "-o" "ConnectTimeout=3"
+                          ,target
+                          ,shell-cmd)))
+             (values (first argv) argv))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Virtual File Open Handler
