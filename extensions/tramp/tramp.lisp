@@ -225,8 +225,9 @@ Marks connection as needing password and prompts."
                    cmd-args))))
     (:sudo
      (let ((args (list "sudo")))
-       (when use-sudo-s
-         (push "-S" (cdr args)))
+       (if use-sudo-s
+           (push "-S" (cdr args))   ;; read password from stdin
+           (push "-n" (cdr args)))  ;; non-interactive (pre-authed or passwordless)
        (when user
          (setf args (append args (list "-u" user))))
        (append args (uiop:ensure-list command))))))
@@ -293,6 +294,41 @@ Signals editor-error if authentication ultimately fails."
        (or (search "incorrect password" stderr :test #'char-equal)
            (search "try again" stderr :test #'char-equal)
            (search "Sorry" stderr :test #'char-equal))))
+
+(defun %sudo-auth-once (user host password)
+  "Pre-authenticate sudo with PASSWORD via a one-shot 'sudo -S true' call.
+Stdin is closed right after the password — no data can leak to subsequent
+commands.  After this call succeeds, 'sudo -n' will work for the duration
+of the sudo timestamp (typically 5–15 minutes).
+
+Returns T on success.  Returns NIL on authentication failure (caller should
+re-prompt and retry)."
+  (let* ((args `("sudo" "-S" "-p" ""
+                 ,@(when user (list "-u" user))
+                 "true"))
+         (process (uiop:launch-program args
+                                       :output nil
+                                       :input :stream
+                                       :error-output :stream
+                                       :ignore-error-status t)))
+    (unwind-protect
+         (let ((in (uiop:process-info-input process))
+               (err (uiop:process-info-error-output process)))
+           (write-line password in)
+           (finish-output in)
+           (close in)
+           (let* ((stderr-str
+                    (with-output-to-string (s)
+                      (loop :for line := (read-line err nil nil)
+                            :while line
+                            :do (write-line line s))))
+                  (exit-code (uiop:wait-process process)))
+             (if (sudo-auth-failure-p stderr-str)
+                 (progn
+                   (clear-password :sudo user host)
+                   nil)
+                 (eql 0 exit-code))))
+      (ignore-errors (close (uiop:process-info-error-output process))))))
 
 (defun %sudo-run (user host args password)
   "Run a sudo command via pipe. Returns (values exit-code stdout-string).
@@ -429,8 +465,9 @@ On authentication failure, re-prompts for password and retries once."
                   (%sudo-run user host args password)
                 (unless (eql 0 exit-code)
                   (editor-error "Failed to read remote file ~A (exit ~D)" path exit-code))
-                ;; Guard: strip password if it leaked into stdout due to
-                ;; a lem-webview prompt overlay cleanup race.
+                ;; Defense-in-depth: strip password if it somehow leaked into
+                ;; stdout (e.g. from an older write-path bug or a
+                ;; lem-webview prompt overlay cleanup race).
                 (when (and password (plusp (length password)))
                   (when (str:starts-with-p password stdout)
                     (setf stdout (subseq stdout (length password)))
@@ -451,38 +488,53 @@ On authentication failure, re-prompts for password and retries once."
                 (declare (ignore s)))))))
 
 (defun %make-ssh-input-stream (method user host path)
-  "Create a stream for writing a remote file via SSH/sudo."
+  "Create a stream for writing a remote file via SSH/sudo.
+For :sudo, pre-authenticates with a one-shot 'sudo -S true' call so the
+actual write command (sudo -n) never sees the password on its stdin —
+only file content flows through the pipe."
   (let* ((cmd (ecase method
                 (:ssh (list "/bin/sh" "-c"
                             (format nil "cat > ~A" (escape-shell-arg path))))
                 (:sudo (list "/bin/sh" "-c"
                              (format nil "cat > ~A" (escape-shell-arg path))))))
-         (use-sudo-s (eq method :sudo))
          (password (or (get-password method user host)
-                       (ensure-password method user host)))
-         (args (build-ssh-args method user host cmd
-                               :use-sudo-s use-sudo-s
-                               :password (when (eq method :ssh) password))))
-    (handler-case
-        (let* ((process (uiop:launch-program args
-                                             :output nil
-                                             :input :stream
-                                             :error-output :stream
-                                             :ignore-error-status t))
-               (stream (uiop:process-info-input process)))
-          (when (and password (eq method :sudo))
-            (write-line password stream)
-            (finish-output stream))
-          (values stream
-                  (lambda (s)
-                    (finish-output s)
-                    (ignore-errors (close s))
-                    (ignore-errors (uiop:wait-process process)))))
-      (editor-error (e)
-        (error e))
-      (error (e)
-        (clear-password method user host)
-        (editor-error "Failed to write remote file ~A: ~A" path e)))))
+                       (ensure-password method user host))))
+    ;; For sudo: pre-authenticate so the write process stdin carries
+    ;; ONLY file content.  The password goes to a throwaway 'sudo -S true'
+    ;; process whose stdin is closed before we even spawn the write command.
+    (when (and password (eq method :sudo))
+      (unless (%sudo-auth-once user host password)
+        ;; Auth failed — re-prompt and retry once
+        (let ((new-pwd (progn (clear-password :sudo user host)
+                              (prompt-password :sudo user host))))
+          (if new-pwd
+              (if (%sudo-auth-once user host new-pwd)
+                  (setf password new-pwd)
+                  (editor-error "sudo authentication failed"))
+              (error 'editor-abort)))))
+    (let* ((args (build-ssh-args method user host cmd
+                                 ;; sudo -n: pre-authed, no password on stdin
+                                 :use-sudo-s nil
+                                 :password (when (eq method :ssh) password))))
+      (handler-case
+          (let* ((process (uiop:launch-program args
+                                               :output nil
+                                               :input :stream
+                                               :error-output :stream
+                                               :ignore-error-status t))
+                 (stream (uiop:process-info-input process)))
+            ;; IMPORTANT: NO password is written to this stream.
+            ;; The sudo session was established by %sudo-auth-once above.
+            (values stream
+                    (lambda (s)
+                      (finish-output s)
+                      (ignore-errors (close s))
+                      (ignore-errors (uiop:wait-process process)))))
+        (editor-error (e)
+          (error e))
+        (error (e)
+          (clear-password method user host)
+          (editor-error "Failed to write remote file ~A: ~A" path e))))))
 
 (defun escape-shell-arg (arg)
   "Escape ARG for safe use in a shell command (single-quote escaping)."
