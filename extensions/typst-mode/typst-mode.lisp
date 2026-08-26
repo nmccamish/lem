@@ -47,8 +47,8 @@
             (make-tm-region "`" "`"
                             :name 'lem:document-inline-code-attribute)
 
-            ;; math mode ($...$)
-            (make-tm-region "$" "$"
+            ;; math mode ($...$) 
+            (make-tm-region "\\$" "\\$"
                             :name 'syntax-constant-attribute)
 
             ;; ("text")
@@ -62,7 +62,7 @@
                            :name 'syntax-variable-attribute)
 
             ;; (integer, floats, length: 10pt, 2em, 50%)
-            (make-tm-match "\\b[0-9]+(\\.[0-9]+)?(pt|mm|cm|in|em|%|deg|rad)?\\b"
+            (make-tm-match "\\b[0-9]+(\\.[0-9]+)?(pt|mm|cm|in|em|deg|rad)?\\b|\\b[0-9]+(\\.[0-9]+)?%"
                            :name 'syntax-constant-attribute)
 
             ;; (#let, #set, let, if, etc.)
@@ -114,8 +114,15 @@
      :syntax-table *typst-syntax-table*
      :mode-hook *typst-mode-hook*
      :formatter #'typst-typstyle)
-  (lem-tree-sitter:enable-tree-sitter-for-mode
-   *typst-syntax-table* "typst" (tree-sitter-query-path))
+  (let ((query-path (tree-sitter-query-path))
+        (indent-path (tree-sitter-indent-path)))
+    (when (and query-path (probe-file query-path))
+      (lem-tree-sitter:enable-tree-sitter-for-mode
+       *typst-syntax-table*
+       "typst"
+       query-path
+       :indent-query-path (when (and indent-path (probe-file indent-path))
+                            indent-path))))
   (setf (variable-value 'enable-syntax-highlight) t
         (variable-value 'indent-tabs-mode) nil
         (variable-value 'tab-width) 2
