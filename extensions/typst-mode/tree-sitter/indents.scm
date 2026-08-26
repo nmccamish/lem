@@ -1,3 +1,6 @@
+; Typst indent queries for Lem editor
+; Based on @indent and @outdent captures processed by lem-tree-sitter/indent
+
 [
   (code_block)
   (content_block)
@@ -13,24 +16,14 @@
   (math_delimited)
   (math_group)
   (list_body)
-] @indent.begin
-
-(equation
-  "$"
-  body: (math)
-  "$" @indent.end)
+] @indent
 
 [
   "}"
   "]"
   ")"
-] @indent.end
+] @outdent
 
 [
   "else"
-] @indent.branch
-
-[
-  (raw_content)
-  (string_content)
-] @indent.auto
+] @outdent
