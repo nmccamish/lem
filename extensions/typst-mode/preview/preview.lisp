@@ -27,6 +27,7 @@
 
 
 (define-command typst-set-preview-root () ()
+  "Set typst preview root to a directory useful if you have other file included that are not in the current directory"
   (let ((dir (prompt-for-directory "Typst preview root: "
                                    :directory (buffer-directory))))
     (when dir
@@ -34,6 +35,7 @@
       (message "Typst root directory set to : ~A" *typst-root*))))
 
 (define-command typst-export-file (output-pdf)
+    "export current typst file to pdf at output-pdf path"
     ((prompt-for-string "PDF Name : " :initial-value (concatenate 'string (namestring (buffer-directory)) "out.pdf")))
   (let* ((input (buffer-filename (current-buffer)))
         (cmd (append (list "typst" "compile" (namestring input))  
@@ -45,7 +47,7 @@
                         
 
 (defun typst-cleanup-tinymist ()
-  "Kill active tinymist before closing lem"
+  "Kill active tinymist process launched by lem before closing lem"
   (maphash (lambda (filepath session)
              (declare (ignore filepath))
              (let ((process (typst-preview-session-process session)))
@@ -59,6 +61,7 @@
 ;; clean all tinymist process in case editor is closed
 (add-hook *exit-editor-hook* 'typst-cleanup-tinymist)
 
+;; same but for sbcl
 #+sbcl
 (pushnew 'typst-cleanup-tinymist sb-ext:*exit-hooks*)
 
