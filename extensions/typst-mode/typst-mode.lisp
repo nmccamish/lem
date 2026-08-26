@@ -102,12 +102,13 @@
   (asdf:system-relative-pathname :lem-typst-mode "tree-sitter/indents.scm"))
 
 (defun typst-typstyle (buf)
-  "Format file in place using typstyle"
+  "Format file in place using typstyle."
   (let ((file (buffer-filename buf)))
-    (uiop:run-program
-     (format nil "typstyle -i ~a" file)
-     :ignore-error-status t))
-  (revert-buffer t))
+    (when file
+      (uiop:run-program
+       (list "typstyle" "-i" (namestring file))
+       :ignore-error-status t)
+      (revert-buffer t))))
 
 (define-major-mode typst-mode language-mode
     (:name "Typst"
