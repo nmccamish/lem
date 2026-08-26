@@ -34,12 +34,12 @@
       (message "Typst root directory set to : ~A" *typst-root*))))
 
 (define-command typst-export-file (output-pdf)
-    ((prompt-for-string "PDF Name : " :initial-value "out.pdf"))
+    ((prompt-for-string "PDF Name : " :initial-value (concatenate 'string (namestring (buffer-directory)) "out.pdf")))
   (let* ((input (buffer-filename (current-buffer)))
         (cmd (append (list "typst" "compile" (namestring input))  
                      (when (and *typst-root* (not (string= *typst-root* "")))
                        (list "--root" *typst-root*))
-                     (list (concatenate 'string (namestring (buffer-directory)) output-pdf)))))
+                     (list output-pdf))))
         (uiop:run-program cmd))
     (message "Exported successfully in ~A" output-pdf))
                         
@@ -49,7 +49,7 @@
   (maphash (lambda (filepath session)
              (declare (ignore filepath))
              (let ((process (typst-preview-session-process session)))
-               (when (and proc (uiop:process-alive-p proc))
+               (when (and process (uiop:process-alive-p process))
                  (ignore-errors (uiop:terminate-process process :urgent t)))))
            *typst-preview-sessions*)
   (clrhash *typst-preview-sessions*))
