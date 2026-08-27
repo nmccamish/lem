@@ -2,38 +2,6 @@
   (:use :cl :rove :lem :lem-typst-mode))
 (in-package :lem-typst-mode/tests)
 
-(deftest test-mode-registration
-  (testing "Typst mode is registered with the correct name and inheritance"
-    (ok (eq (lem:find-mode-from-name "Typst") 'typst-mode)
-        "typst-mode should be registered with name 'Typst'")
-    (ok (subtypep 'typst-mode 'lem/language-mode:language-mode)
-        "typst-mode should inherit from lem/language-mode:language-mode")))
-
-(deftest test-file-associations
-  (testing "typst-mode activates for .typ and .typst files"
-    (ok (eq (lem:find-mode-from-filename "main.typ") 'typst-mode)
-        "main.typ should activate typst-mode")
-    (ok (eq (lem:find-mode-from-filename "document.typst") 'typst-mode)
-        "document.typst should activate typst-mode")))
-
-(deftest test-syntax-table-configuration
-  (testing "*typst-syntax-table* structure and properties"
-    (ok *typst-syntax-table*
-        "*typst-syntax-table* must be defined")
-    (ok (lem:syntax-table-p *typst-syntax-table*)
-        "*typst-syntax-table* must be a valid syntax table")))
-
-(deftest test-commands-registered
-  (testing "all interactive typst commands are registered in Lem"
-    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-preview)
-        "typst-preview command should be registered")
-    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-preview-stop)
-        "typst-preview-stop command should be registered")
-    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-set-preview-root)
-        "typst-set-preview-root command should be registered")
-    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-export-file)
-        "typst-export-file command should be registered")))
-
 (defparameter +typst-suite-sample+
   "// Typst Test Suite Sample
 #set page(paper: \"a4\", margin: (x: 2cm, y: 2.5cm))
@@ -80,6 +48,38 @@ Or inline `let x = 10pt`.
 See reference @intro for details.
 /* End of sample file */
 ")
+
+(deftest test-mode-registration
+  (testing "Typst mode is registered with the correct name and inheritance"
+    (ok (eq (lem:find-mode-from-name "Typst") 'typst-mode)
+        "typst-mode should be registered with name 'Typst'")
+    (ok (subtypep 'typst-mode 'lem/language-mode:language-mode)
+        "typst-mode should inherit from lem/language-mode:language-mode")))
+
+(deftest test-file-associations
+  (testing "typst-mode activates for .typ and .typst files"
+    (ok (eq (lem:find-mode-from-filename "main.typ") 'typst-mode)
+        "main.typ should activate typst-mode")
+    (ok (eq (lem:find-mode-from-filename "document.typst") 'typst-mode)
+        "document.typst should activate typst-mode")))
+
+(deftest test-syntax-table-configuration
+  (testing "*typst-syntax-table* structure and properties"
+    (ok *typst-syntax-table*
+        "*typst-syntax-table* must be defined")
+    (ok (lem:syntax-table-p *typst-syntax-table*)
+        "*typst-syntax-table* must be a valid syntax table")))
+
+(deftest test-commands-registered
+  (testing "all interactive typst commands are registered in Lem"
+    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-preview)
+        "typst-preview command should be registered")
+    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-preview-stop)
+        "typst-preview-stop command should be registered")
+    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-set-preview-root)
+        "typst-set-preview-root command should be registered")
+    (ok (lem:get-command 'lem-typst-mode/preview/preview:typst-export-file)
+        "typst-export-file command should be registered")))
 
 (deftest test-syntax-scanning-typst-suite
   (testing "Syntax scanner scans realistic Typst document without infinite loops or errors"

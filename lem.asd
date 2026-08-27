@@ -252,7 +252,7 @@
                "lem-html-mode"
                "lem-vue-mode"
                "lem-typescript-mode"
-               "lem-typst-mode"	
+               "lem-typst-mode"
                "lem-json-mode"
                "lem-rust-mode"
                "lem-zig-mode"
@@ -262,10 +262,10 @@
                #-clasp
                "lem-scheme-mode"
                "lem-clojure-mode"
-	       
+
                "lem-patch-mode"
                "lem-toml-mode"
-               
+
                "lem-yaml-mode"
                "lem-review-mode"
                "lem-asciidoc-mode"

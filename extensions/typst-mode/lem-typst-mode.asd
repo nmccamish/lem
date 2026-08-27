@@ -13,7 +13,10 @@
   :depends-on ("lem-typst-mode" "rove")
   :components ((:module "tests"
                 :components ((:file "main"))))
-  :perform (test-op (op c) (symbol-call :rove '#:run c)))
+  :perform (test-op (op c)
+             ;; symbol-call is the standard ASDF test-op indirection;
+             ;; matches the pattern used in lem-tests.asd.
+             (symbol-call :rove '#:run c)))
 
 
 
