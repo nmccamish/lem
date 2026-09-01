@@ -1,15 +1,15 @@
 (uiop:define-package :lem-typst-mode/preview/preview
   (:use :cl :lem)
   (:export :typst-preview
-           :typst-preview-stop
+   :typst-preview-stop
            :typst-set-preview-root
-           :typst-export-file))
+   :typst-export-file))
 (in-package :lem-typst-mode/preview/preview)
 
 ;;; Variables
-(defvar *typst-preview-sessions* (make-hash-table :test 'equal))
-(defvar *typst-root* "")
-(defvar *typst-preview-default-url* "http://127.0.0.1:23625")
+(defvar *preview-sessions* (make-hash-table :test 'equal))
+(defvar *pdf-root* "")
+(defvar *preview-default-url* "http://127.0.0.1:23625")
 
 ;;; Structures
 (defstruct typst-preview-session
@@ -20,22 +20,22 @@
 ;;; Internal Functions
 (defun stop-preview-process (filepath)
   "Stop the active preview process for FILEPATH if it exists."
-  (let ((session (gethash filepath *typst-preview-sessions*)))
+  (let ((session (gethash filepath *preview-sessions*)))
     (when session
       (let ((proc (typst-preview-session-process session)))
         (when (and proc (uiop:process-alive-p proc))
           (ignore-errors (uiop:terminate-process proc :urgent t))))
-      (remhash filepath *typst-preview-sessions*))))
+      (remhash filepath *preview-sessions*))))
 
-(defun typst-cleanup-tinymist ()
+(defun cleanup-preview-processes ()
   "Kill active tinymist process launched by Lem before closing."
   (maphash (lambda (filepath session)
              (declare (ignore filepath))
              (let ((process (typst-preview-session-process session)))
                (when (and process (uiop:process-alive-p process))
                  (ignore-errors (uiop:terminate-process process :urgent t)))))
-           *typst-preview-sessions*)
-  (clrhash *typst-preview-sessions*))
+           *preview-sessions*)
+  (clrhash *preview-sessions*))
 
 ;;; Commands
 (define-command typst-set-preview-root () ()
@@ -43,18 +43,18 @@
   (let ((dir (prompt-for-directory "Typst preview root: "
                                    :directory (buffer-directory))))
     (when dir
-      (setf *typst-root* (namestring dir))
-      (message "Typst root directory set to: ~A" *typst-root*))))
+      (setf *pdf-root* (namestring dir))
+      (message "Typst root directory set to: ~A" *pdf-root*))))
 
 (define-command typst-export-file (output-pdf)
-    ((prompt-for-string "PDF Name: "
-                        :initial-value (concatenate 'string (namestring (buffer-directory)) "out.pdf")))
+  ((prompt-for-string "PDF Name: "
+                      :initial-value (concatenate 'string (namestring (buffer-directory)) "out.pdf")))
   "Export current Typst file to PDF at OUTPUT-PDF path."
   (let ((input (buffer-filename (current-buffer))))
     (if input
         (let ((cmd (append (list "typst" "compile" (namestring input))
-                           (when (and *typst-root* (not (string= *typst-root* "")))
-                             (list "--root" *typst-root*))
+                           (when (and *pdf-root* (not (string= *pdf-root* "")))
+                             (list "--root" *pdf-root*))
                            (list output-pdf))))
           (uiop:run-program cmd)
           (message "Exported successfully to ~A" output-pdf))
@@ -67,25 +67,25 @@ Otherwise, starts a new tinymist preview server."
   (let ((file (buffer-filename (current-buffer))))
     (if file
         (let* ((filepath (namestring file))
-               (session (gethash filepath *typst-preview-sessions*)))
+               (session (gethash filepath *preview-sessions*)))
           (cond
             ;; Server is already running: reopen the browser at the existing URL without restarting
             ((and session
                   (typst-preview-session-process session)
                   (uiop:process-alive-p (typst-preview-session-process session)))
-             (let ((url (or (typst-preview-session-url session) *typst-preview-default-url*)))
+             (let ((url (or (typst-preview-session-url session) *preview-default-url*)))
                (lem:open-external-file url)
                (message "Reopened Typst preview at ~A" url)))
             ;; Server is not running: start a new tinymist preview instance
             (t
              (stop-preview-process filepath)
              (let* ((cmd (append (list "tinymist" "preview")
-                                 (when (and *typst-root* (not (string= *typst-root* "")))
-                                   (list "--root" *typst-root*))
+                                 (when (and *pdf-root* (not (string= *pdf-root* "")))
+                                   (list "--root" *pdf-root*))
                                  (list "--open" filepath)))
                     (proc (uiop:launch-program cmd))
-                    (url *typst-preview-default-url*))
-               (setf (gethash filepath *typst-preview-sessions*)
+                    (url *preview-default-url*))
+               (setf (gethash filepath *preview-sessions*)
                      (make-typst-preview-session :process proc
                                                  :url url
                                                  :filepath filepath))
@@ -97,7 +97,7 @@ Otherwise, starts a new tinymist preview server."
   (let ((file (buffer-filename (current-buffer))))
     (if file
         (let ((filepath (namestring file)))
-          (if (gethash filepath *typst-preview-sessions*)
+          (if (gethash filepath *preview-sessions*)
               (progn
                 (stop-preview-process filepath)
                 (message "Typst preview server stopped."))
@@ -105,7 +105,7 @@ Otherwise, starts a new tinymist preview server."
         (editor-error "Current buffer is not associated with a file."))))
 
 ;;; Hooks
-(add-hook *exit-editor-hook* 'typst-cleanup-tinymist)
+(add-hook *exit-editor-hook* 'cleanup-preview-processes)
 
 #+sbcl
-(pushnew 'typst-cleanup-tinymist sb-ext:*exit-hooks*)
+(pushnew 'cleanup-preview-processes sb-ext:*exit-hooks*)

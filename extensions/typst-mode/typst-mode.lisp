@@ -1,9 +1,9 @@
 (defpackage :lem-typst-mode
   (:use :cl :lem :lem/language-mode :lem/language-mode-tools)
   (:export :*typst-mode-hook*
-           :*typst-mode-keymap*
+   :*typst-mode-keymap*
            :*typst-syntax-table*
-           :typst-mode))
+   :typst-mode))
 (in-package :lem-typst-mode)
 
 (defparameter *typst-keywords*
@@ -111,11 +111,11 @@
       (revert-buffer t))))
 
 (define-major-mode typst-mode language-mode
-    (:name "Typst"
-     :keymap *typst-mode-keymap*
-     :syntax-table *typst-syntax-table*
-     :mode-hook *typst-mode-hook*
-     :formatter #'typst-typstyle)
+  (:name "Typst"
+   :keymap *typst-mode-keymap*
+   :syntax-table *typst-syntax-table*
+   :mode-hook *typst-mode-hook*
+   :formatter #'typst-typstyle)
   (let ((query-path (tree-sitter-query-path))
         (indent-path (tree-sitter-indent-path)))
     (when (and query-path (probe-file query-path))
@@ -132,5 +132,3 @@
         (variable-value 'insertion-line-comment) "// "))
 
 (define-file-type ("typ" "typst") typst-mode)
-
-          
